@@ -575,7 +575,10 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_CONFIG) $(DEPMOD) $(DTC) $(KERNEL_MODULE
 				) \
 				gki_modules=$$(for m in $(SYSTEM_KERNEL_MODULES) $$gki_kernel_modules_deps; do \
 					p=$$(echo $$all_modules | tr ' ' '\n' | grep /$$m); \
-					if [ -n "$$p" ]; then echo $$p; else echo "ERROR: $$m from SYSTEM_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
+					if [ -n "$$p" ]; then echo $$p; \
+					elif [ "$(BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING)" = "true" ]; then \
+						echo "WARNING: $$m from SYSTEM_KERNEL_MODULES not found, skipping (BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING=true)" 1>&2; \
+					else echo "ERROR: $$m from SYSTEM_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
 				done); \
 				[ $$? -ne 0 ] && exit 1; \
 				($(call build-image-kernel-modules-lineage,$$gki_modules,$(SYSTEM_KERNEL_MODULES_OUT),$(SYSTEM_KERNEL_MODULE_MOUNTPOINT)/,$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR),$(SYSTEM_KERNEL_MODULES_LOAD),$(GKI_SUFFIX),$(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST),)) || exit "$$?"; \
@@ -603,7 +606,10 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_CONFIG) $(DEPMOD) $(DTC) $(KERNEL_MODULE
 				) \
 				vendor_boot_modules=$$(for m in $(BOOT_KERNEL_MODULES) $$boot_kernel_modules_deps $$boot_kernel_modules_finder_output; do \
 					p=$$(echo $$all_modules | tr ' ' '\n' | grep /$$m); \
-					if [ -n "$$p" ]; then echo $$p; else echo "ERROR: $$m from BOOT_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
+					if [ -n "$$p" ]; then echo $$p; \
+					elif [ "$(BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING)" = "true" ]; then \
+						echo "WARNING: $$m from BOOT_KERNEL_MODULES not found, skipping (BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING=true)" 1>&2; \
+					else echo "ERROR: $$m from BOOT_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
 				done); \
 				[ $$? -ne 0 ] && exit 1; \
 				($(call build-image-kernel-modules-lineage,$$vendor_boot_modules,$(KERNEL_VENDOR_RAMDISK_MODULES_OUT),,$(KERNEL_VENDOR_RAMDISK_DEPMOD_STAGING_DIR),$(KERNEL_VENDOR_RAMDISK_KERNEL_MODULES_LOAD),,,)) || exit "$$?"; \
@@ -617,7 +623,10 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_CONFIG) $(DEPMOD) $(DTC) $(KERNEL_MODULE
 				) \
 				recovery_modules=$$(for m in $(RECOVERY_KERNEL_MODULES) $$recovery_kernel_modules_finder_output $$recovery_kernel_modules_deps; do \
 					p=$$(echo $$all_modules | tr ' ' '\n' | grep /$$m); \
-					if [ -n "$$p" ]; then echo $$p; else echo "ERROR: $$m from RECOVERY_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
+					if [ -n "$$p" ]; then echo $$p; \
+					elif [ "$(BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING)" = "true" ]; then \
+						echo "WARNING: $$m from RECOVERY_KERNEL_MODULES not found, skipping (BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING=true)" 1>&2; \
+					else echo "ERROR: $$m from RECOVERY_KERNEL_MODULES was not found" 1>&2 && exit 1; fi; \
 				done); \
 				[ $$? -ne 0 ] && exit 1; \
 				($(call build-image-kernel-modules-lineage,$$recovery_modules,$(KERNEL_RECOVERY_MODULES_OUT),,$(KERNEL_RECOVERY_DEPMOD_STAGING_DIR),$(BOARD_RECOVERY_KERNEL_MODULES_LOAD),,,)) || exit "$$?"; \
