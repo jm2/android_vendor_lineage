@@ -552,6 +552,7 @@ $(TARGET_PREBUILT_INT_KERNEL): $(KERNEL_CONFIG) $(DEPMOD) $(DTC) $(KERNEL_MODULE
 				$(eval p := $(subst :,$(space),$(s))) \
 				; mv $$(echo $$all_modules | tr ' ' '\n' | grep /$(word 1,$(p))) $$kernel_modules_dir/$(word 2,$(p))); \
 			$(if $(BOARD_VENDOR_KERNEL_MODULES),\
+				rm -rf $$kernel_modules_dir/oem; \
 				mkdir -p $$kernel_modules_dir/oem; \
 				src_names=$$(echo "$$all_modules" | tr ' ' '\n' | xargs -n1 basename 2>/dev/null | sort -u); \
 				for m in $(BOARD_VENDOR_KERNEL_MODULES); do \
