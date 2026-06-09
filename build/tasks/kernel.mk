@@ -176,6 +176,23 @@ ifeq "$(wildcard $(KERNEL_SRC) )" ""
     endif
 
     ifneq ($(TARGET_KERNEL_PLATFORM_TARGET),)
+        # jm2: when TARGET_KERNEL_PLATFORM_ROOT is set (OEM-wrapper adapter, see
+        # KLEAF_WIREUP_PLAN.md Part A), the OEM kernel tree lives at an explicit root that
+        # may be OUTSIDE BUILD_TOP and keep its bazel workspace in a subdir, so the stock
+        # "$(BUILD_TOP)/kernel/platform/kernel-<ver>/$(KERNEL_SRC)" existence check does not
+        # apply. Validate the wrapper script at the root instead.
+        ifneq ($(TARGET_KERNEL_PLATFORM_ROOT),)
+            # BUILD_WRAPPER may be absolute (use as-is) or relative to ROOT.
+            _kp_wrapper_path := $(if $(filter /%,$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER)),$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),$(TARGET_KERNEL_PLATFORM_ROOT)/$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER))
+            ifeq "$(wildcard $(_kp_wrapper_path) )" ""
+                $(warning ***************************************************************)
+                $(warning * No OEM kernel platform wrapper found at                     *)
+                $(warning *   $(_kp_wrapper_path))
+                $(warning * Set TARGET_KERNEL_PLATFORM_ROOT to the OEM repo root.        *)
+                $(warning ***************************************************************)
+                $(error "NO KERNEL PLATFORM ROOT")
+            endif
+        else
         ifeq "$(wildcard $(abspath $(BUILD_TOP)/kernel/platform/kernel-$(TARGET_KERNEL_VERSION))/$(KERNEL_SRC) )" ""
             $(warning ***************************************************************)
             $(warning *                                                             *)
@@ -185,6 +202,7 @@ ifeq "$(wildcard $(KERNEL_SRC) )" ""
             $(warning *                                                             *)
             $(warning ***************************************************************)
             $(error "NO KERNEL")
+        endif
         endif
         NEEDS_KERNEL_COPY := true
         FULL_KERNEL_BUILD := false
@@ -775,11 +793,35 @@ endif # FULL_KERNEL_BUILD
 
 ifneq ($(TARGET_KERNEL_PLATFORM_TARGET),)
 KERNEL_PATH := $(abspath $(BUILD_TOP)/kernel/platform/kernel-$(TARGET_KERNEL_VERSION))
+
+# jm2: reusable LineageOS <-> OEM-Kleaf adapter (see KLEAF_WIREUP_PLAN.md Part B).
+# Some QC OEM kernel drops (e.g. OnePlus) keep .repo at the repo root but the bazel
+# workspace in a subdir (kernel_platform/) and build via their own wrapper script
+# (oplus/build/oplus_build_kernel.sh), NOT the bare repo-root `bazel run` the stock
+# path below assumes. When TARGET_KERNEL_PLATFORM_BUILD_WRAPPER is set we drive that
+# wrapper and map its dist/ output into KERNEL_OUT; the rest of the recipe (module
+# collection, dtb/dtbo packaging) is unchanged and consumes KERNEL_OUT as before.
+# Guarded entirely on the new var, so the stock Kleaf path (and FULL_KERNEL_BUILD)
+# are untouched when it is empty.
+#   TARGET_KERNEL_PLATFORM_ROOT            absolute path to the OEM repo root
+#   TARGET_KERNEL_PLATFORM_BUILD_WRAPPER   build script (absolute path, or relative
+#                                          to ROOT) -- run with cwd = ROOT
+#   TARGET_KERNEL_PLATFORM_BUILD_ARGS      args to the wrapper (e.g. "canoe perf")
+#   TARGET_KERNEL_PLATFORM_DIST            dist dir, relative to ROOT
+ifneq ($(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),)
+define kernel-platform-dist-cmd
+cd $(TARGET_KERNEL_PLATFORM_ROOT) && $(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER) $(TARGET_KERNEL_PLATFORM_BUILD_ARGS) && cp -a $(TARGET_KERNEL_PLATFORM_ROOT)/$(TARGET_KERNEL_PLATFORM_DIST)/. $(abspath $(KERNEL_OUT))/
+endef
+else
+define kernel-platform-dist-cmd
+cd $(KERNEL_PATH) && python3 $(BUILD_TOP)/.repo/repo/repo manifest -o - -r |sed '/^  <project.*\/>$$/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed '/^  <project/,/  <\/project>/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed 's|kernel/platform/kernel-$(TARGET_KERNEL_VERSION)/||' > $(abspath $(KERNEL_OUT))/manifest.xml && cd $(KERNEL_PATH) && ./tools/bazel --output_user_root=$(abspath $(KERNEL_OUT)/bazel-out) --output_root=$(abspath $(KERNEL_OUT)/bazel-out) run --experimental_convenience_symlinks=ignore --cpu=$(KERNEL_ARCH) --repo_manifest $(abspath $(KERNEL_PATH)):$(abspath $(KERNEL_OUT)/manifest.xml) --config=stamp //$(KERNEL_SRC):$(TARGET_KERNEL_PLATFORM_TARGET)_dist -- --destdir=$(abspath $(KERNEL_OUT))
+endef
+endif
+
 $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $(SYSTEM_KERNEL_MODULES_PARTITION_FILE_LIST)
 	@echo "Building $(BOARD_KERNEL_IMAGE_NAME)"
 	@mkdir -p $(KERNEL_OUT)
-	$(hide) cd $(KERNEL_PATH) && python3 $(BUILD_TOP)/.repo/repo/repo manifest -o - -r |sed '/^  <project.*\/>$$/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed '/^  <project/,/  <\/project>/{/kernel\/platform\/kernel-$(TARGET_KERNEL_VERSION)/!d;}' |sed 's|kernel/platform/kernel-$(TARGET_KERNEL_VERSION)/||' > $(abspath $(KERNEL_OUT))/manifest.xml
-	$(hide) cd $(KERNEL_PATH) && ./tools/bazel --output_user_root=$(abspath $(KERNEL_OUT)/bazel-out) --output_root=$(abspath $(KERNEL_OUT)/bazel-out) run --experimental_convenience_symlinks=ignore --cpu=$(KERNEL_ARCH) --repo_manifest $(abspath $(KERNEL_PATH)):$(abspath $(KERNEL_OUT)/manifest.xml) --config=stamp //$(KERNEL_SRC):$(TARGET_KERNEL_PLATFORM_TARGET)_dist -- --destdir=$(abspath $(KERNEL_OUT))
+	$(hide) $(kernel-platform-dist-cmd)
 	$(if $(BOOT_KERNEL_MODULES),\
 		$(call build-image-kernel-modules-lineage,$(addprefix $(KERNEL_OUT)/,$(BOOT_KERNEL_MODULES)),$(KERNEL_VENDOR_RAMDISK_MODULES_OUT),,$(KERNEL_VENDOR_RAMDISK_DEPMOD_STAGING_DIR),$(KERNEL_VENDOR_RAMDISK_KERNEL_MODULES_LOAD),,,)\
 	)
