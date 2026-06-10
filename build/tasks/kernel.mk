@@ -845,6 +845,11 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
 	($(call build-image-kernel-modules-lineage,$$vendor_modules,$(KERNEL_MODULES_OUT),$(KERNEL_MODULE_MOUNTPOINT)/,$(KERNEL_DEPMOD_STAGING_DIR),$(BOARD_VENDOR_KERNEL_MODULES_LOAD),,$(KERNEL_MODULES_PARTITION_FILE_LIST),$(SYSTEM_KERNEL_DEPMOD_STAGING_DIR)/lib/modules/0.0/$(SYSTEM_KERNEL_MODULE_MOUNTPOINT),$(BOARD_VENDOR_KERNEL_MODULES_DEPMOD_BRIDGE_DIR)))
 
 ifeq ($(BOARD_INCLUDE_DTB_IN_BOOTIMG),true)
+# jm2: when the device supplies a prebuilt dtb dir (e.g. the stock 14-DTB blob —
+# the OEM OSS dist's DTBs are a bring-up subset that cannot light the panel),
+# AOSP core/Makefile builds INSTALLED_DTBIMAGE_TARGET from that dir; defining
+# the dist-cat rule here too would conflict.
+ifeq ($(BOARD_PREBUILT_DTBIMAGE_DIR),)
 $(INSTALLED_DTBIMAGE_TARGET): $(TARGET_PREBUILT_INT_KERNEL)
 	@rm -f $@
 	$(foreach dtb,$(TARGET_DTB_LIST_WILDCARD),\
@@ -856,19 +861,23 @@ MKDTBOIMG := $(HOST_OUT_EXECUTABLES)/mkdtboimg$(HOST_EXECUTABLE_SUFFIX)
 $(BOARD_PREBUILT_DTBOIMAGE): $(TARGET_PREBUILT_INT_KERNEL) $(MKDTBOIMG)
 	$(MKDTBOIMG) create $@ --page_size=$(BOARD_KERNEL_PAGESIZE) $(shell find $(abspath $(KERNEL_OUT))/$(dir $(TARGET_DTBO_LIST_WILDCARD)) -maxdepth 1 -type f -name "$(notdir $(TARGET_DTBO_LIST_WILDCARD)).dtbo" | sort)
 else
-# jm2: dist dtbo passthrough — OEM-wrapper dists ship a dtbo.img the OEM build
-# already packed from ALL board/panel variant overlays (richer than re-packing
-# the flat .dtbo files above). When the device points BOARD_PREBUILT_DTBOIMAGE
-# at a path of ours and leaves SEPARATED_DTBO unset, publish the dist's image
-# there so core/Makefile can package and AVB-sign it.
+# jm2: dist dtbo passthrough — OEM-wrapper dists ship a dtbo.img packed by the
+# OEM build. When the device points BOARD_PREBUILT_DTBOIMAGE at a GENERATED
+# path (no such file at parse time), publish the dist's image there so
+# core/Makefile can package and AVB-sign it. When it points at a real prebuilt
+# file (e.g. the stock dtbo), core/Makefile consumes it directly and no rule
+# may be defined for it.
 ifneq ($(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),)
 ifneq ($(BOARD_PREBUILT_DTBOIMAGE),)
+ifeq ($(wildcard $(BOARD_PREBUILT_DTBOIMAGE)),)
 $(BOARD_PREBUILT_DTBOIMAGE): $(TARGET_PREBUILT_INT_KERNEL)
 	cp $(abspath $(KERNEL_OUT))/dtbo.img $@
 endif
 endif
 endif
 endif
+endif
+endif # TARGET_KERNEL_PLATFORM_TARGET
 
 ifeq ($(NEEDS_KERNEL_COPY),true)
 $(INSTALLED_KERNEL_TARGET): $(KERNEL_BIN)
