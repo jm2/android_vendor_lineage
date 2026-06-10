@@ -176,12 +176,16 @@ ifeq "$(wildcard $(KERNEL_SRC) )" ""
     endif
 
     ifneq ($(TARGET_KERNEL_PLATFORM_TARGET),)
-        # jm2: when TARGET_KERNEL_PLATFORM_ROOT is set (OEM-wrapper adapter, see
+        # jm2: when TARGET_KERNEL_PLATFORM_BUILD_WRAPPER is set (OEM-wrapper adapter, see
         # KLEAF_WIREUP_PLAN.md Part A), the OEM kernel tree lives at an explicit root that
         # may be OUTSIDE BUILD_TOP and keep its bazel workspace in a subdir, so the stock
         # "$(BUILD_TOP)/kernel/platform/kernel-<ver>/$(KERNEL_SRC)" existence check does not
-        # apply. Validate the wrapper script at the root instead.
-        ifneq ($(TARGET_KERNEL_PLATFORM_ROOT),)
+        # apply. Validate ROOT + the wrapper script instead. (Keyed on the same var as the
+        # wrapper-driven recipe branch, so guard and recipe can never disagree.)
+        ifneq ($(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),)
+            ifeq ($(TARGET_KERNEL_PLATFORM_ROOT),)
+                $(error TARGET_KERNEL_PLATFORM_BUILD_WRAPPER is set but TARGET_KERNEL_PLATFORM_ROOT is empty)
+            endif
             # BUILD_WRAPPER may be absolute (use as-is) or relative to ROOT.
             _kp_wrapper_path := $(if $(filter /%,$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER)),$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),$(TARGET_KERNEL_PLATFORM_ROOT)/$(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER))
             ifeq "$(wildcard $(_kp_wrapper_path) )" ""
@@ -809,8 +813,11 @@ KERNEL_PATH := $(abspath $(BUILD_TOP)/kernel/platform/kernel-$(TARGET_KERNEL_VER
 #   TARGET_KERNEL_PLATFORM_BUILD_ARGS      args to the wrapper (e.g. "canoe perf")
 #   TARGET_KERNEL_PLATFORM_DIST            dist dir, relative to ROOT
 ifneq ($(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),)
+# Clear the consumed artifact namespace before re-populating from the dist, so a
+# module/dtb dropped between runs cannot linger in KERNEL_OUT and be swept into
+# the images by the find-based collection below.
 define kernel-platform-dist-cmd
-cd $(TARGET_KERNEL_PLATFORM_ROOT) && $(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER) $(TARGET_KERNEL_PLATFORM_BUILD_ARGS) && cp -a $(TARGET_KERNEL_PLATFORM_ROOT)/$(TARGET_KERNEL_PLATFORM_DIST)/. $(abspath $(KERNEL_OUT))/
+rm -f $(abspath $(KERNEL_OUT))/*.ko $(abspath $(KERNEL_OUT))/*.dtb $(abspath $(KERNEL_OUT))/*.dtbo $(abspath $(KERNEL_OUT))/*.modules.load $(abspath $(KERNEL_OUT))/modules.load && cd $(TARGET_KERNEL_PLATFORM_ROOT) && $(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER) $(TARGET_KERNEL_PLATFORM_BUILD_ARGS) && cp -a $(TARGET_KERNEL_PLATFORM_ROOT)/$(TARGET_KERNEL_PLATFORM_DIST)/. $(abspath $(KERNEL_OUT))/
 endef
 else
 define kernel-platform-dist-cmd
@@ -848,6 +855,18 @@ ifeq ($(BOARD_KERNEL_SEPARATED_DTBO),true)
 MKDTBOIMG := $(HOST_OUT_EXECUTABLES)/mkdtboimg$(HOST_EXECUTABLE_SUFFIX)
 $(BOARD_PREBUILT_DTBOIMAGE): $(TARGET_PREBUILT_INT_KERNEL) $(MKDTBOIMG)
 	$(MKDTBOIMG) create $@ --page_size=$(BOARD_KERNEL_PAGESIZE) $(shell find $(abspath $(KERNEL_OUT))/$(dir $(TARGET_DTBO_LIST_WILDCARD)) -maxdepth 1 -type f -name "$(notdir $(TARGET_DTBO_LIST_WILDCARD)).dtbo" | sort)
+else
+# jm2: dist dtbo passthrough — OEM-wrapper dists ship a dtbo.img the OEM build
+# already packed from ALL board/panel variant overlays (richer than re-packing
+# the flat .dtbo files above). When the device points BOARD_PREBUILT_DTBOIMAGE
+# at a path of ours and leaves SEPARATED_DTBO unset, publish the dist's image
+# there so core/Makefile can package and AVB-sign it.
+ifneq ($(TARGET_KERNEL_PLATFORM_BUILD_WRAPPER),)
+ifneq ($(BOARD_PREBUILT_DTBOIMAGE),)
+$(BOARD_PREBUILT_DTBOIMAGE): $(TARGET_PREBUILT_INT_KERNEL)
+	cp $(abspath $(KERNEL_OUT))/dtbo.img $@
+endif
+endif
 endif
 endif
 
