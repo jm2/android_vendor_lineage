@@ -1,17 +1,18 @@
 # jm2/android_vendor_lineage — Lineage notes
 
-This fork exists for four downstream patches needed by the
-jm2/android_kernel_oneplus_sm8850* tree to build cleanly under
-`mka kernel` with vendor's external module wrappers. It tracks
+This fork exists for downstream `build/tasks/kernel.mk` patches needed
+by the jm2/android_kernel_oneplus_sm8850* trees. It tracks
 `LineageOS/android_vendor_lineage` (`github` remote) and adds these
-commits on top of `lineage-23.2`, oldest first:
+patches on top of `lineage-23.2`, oldest first (hashes drift on
+rebase; titles are stable):
 
-- `2f99de7a kernel.mk: pass 'modules' explicitly to external module wrappers`
-- `2ba2ed0e kernel.mk: merge BOARD_VENDOR_KERNEL_MODULES prebuilts into the source-build flow`
-- `4e196512 kernel.mk: wipe stale oem/ before repopulating from BOARD_VENDOR_KERNEL_MODULES`
-- `e8a47255 kernel.mk: respect BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING for BOOT/RECOVERY/SYSTEM lists`
-
-(plus `3ab7c8ac` adding this README.)
+- `kernel.mk: pass 'modules' explicitly to external module wrappers`
+- `kernel.mk: merge BOARD_VENDOR_KERNEL_MODULES prebuilts into the source-build flow`
+- `kernel.mk: wipe stale oem/ before repopulating from BOARD_VENDOR_KERNEL_MODULES`
+- `kernel.mk: respect BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING for BOOT/RECOVERY/SYSTEM lists`
+- `kernel.mk: depmod-layer bridge for OEM-prebuilt-sibling-producer class`
+- `kernel.mk: OEM-wrapper-driven branch for the kernel platform (Kleaf) path` (patch 5 below)
+- `kernel.mk: tolerate missing first-stage modules on the Kleaf path under ALLOW_MISSING` (patch 6 below)
 
 ## Patch 1 — modules target passed explicitly
 
@@ -80,6 +81,33 @@ the BOOT / RECOVERY / SYSTEM kernel-modules-not-found check honor
 become warnings rather than hard errors. The same flag is already
 honored by the `vendor_dlkm` path; this just brings the other three
 phases in line.
+
+## Patch 5 — OEM-wrapper-driven Kleaf platform branch
+
+Some QC OEM kernel drops (OnePlus SM8850) keep `.repo` at the repo root
+but the bazel workspace in a `kernel_platform/` subdir, driven by an
+OEM wrapper script — a shape the stock `TARGET_KERNEL_PLATFORM_TARGET`
+path (repo-root == workspace, bare `bazel run`) cannot consume. When
+`TARGET_KERNEL_PLATFORM_BUILD_WRAPPER` is set, the recipe instead runs
+that wrapper from `TARGET_KERNEL_PLATFORM_ROOT` and copies
+`TARGET_KERNEL_PLATFORM_DIST` into `KERNEL_OUT`; module collection and
+dtb/dtbo packaging are unchanged. Strictly opt-in; the stock branch is
+preserved verbatim when the vars are unset. First consumer:
+`device/oneplus/sm8850-common/kernel-build/build-canoe-kleaf.sh`.
+
+## Patch 6 — tolerant first-stage staging on the Kleaf path
+
+On the Kleaf path, `BOOT_KERNEL_MODULES` / `RECOVERY_KERNEL_MODULES`
+are staged via a direct `cp` of `$(KERNEL_OUT)/<name>`, so one missing
+.ko hard-fails the build — and ALLOW_MISSING (patch 4) only covered the
+FULL_KERNEL_BUILD path's load-list checks. With
+`BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING := true`, missing first-stage
+modules are now skipped with a warning (shell-side filter at recipe
+runtime — a make `$(wildcard)` would evaluate before the kernel build
+step of the same recipe populates KERNEL_OUT). Needed because a few
+stock-loaded OnePlus modules (e.g. `oplus_bsp_ex_gpio`) have no
+published source anywhere; see the device tree's
+`kernel-build/known-source-gaps.txt`.
 
 ## Upstream status
 
