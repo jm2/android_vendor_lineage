@@ -831,11 +831,11 @@ $(TARGET_PREBUILT_INT_KERNEL): $(DEPMOD) $(KERNEL_MODULES_PARTITION_FILE_LIST) $
 	$(hide) $(kernel-platform-dist-cmd)
 	$(if $(BOOT_KERNEL_MODULES),\
 		boot_modules="$(if $(filter true,$(BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING)),$$(for m in $(BOOT_KERNEL_MODULES); do if [ -f $(KERNEL_OUT)/$$m ]; then echo $(KERNEL_OUT)/$$m; else echo "WARNING: $$m from BOOT_KERNEL_MODULES not found, skipping (BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING=true)" 1>&2; fi; done),$(addprefix $(KERNEL_OUT)/,$(BOOT_KERNEL_MODULES)))"; \
-		($(call build-image-kernel-modules-lineage,$$boot_modules,$(KERNEL_VENDOR_RAMDISK_MODULES_OUT),,$(KERNEL_VENDOR_RAMDISK_DEPMOD_STAGING_DIR),$(KERNEL_VENDOR_RAMDISK_KERNEL_MODULES_LOAD),,,)) || exit "$$?"; \
+		($(call build-image-kernel-modules-lineage,$$boot_modules,$(KERNEL_VENDOR_RAMDISK_MODULES_OUT),,$(KERNEL_VENDOR_RAMDISK_DEPMOD_STAGING_DIR),$(KERNEL_VENDOR_RAMDISK_KERNEL_MODULES_LOAD),,,,$(abspath $(KERNEL_OUT)))) || exit "$$?"; \
 	)
 	$(if $(RECOVERY_KERNEL_MODULES),\
 		recovery_modules="$(if $(filter true,$(BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING)),$$(for m in $(RECOVERY_KERNEL_MODULES); do if [ -f $(KERNEL_OUT)/$$m ]; then echo $(KERNEL_OUT)/$$m; else echo "WARNING: $$m from RECOVERY_KERNEL_MODULES not found, skipping (BOARD_KERNEL_MODULES_LOAD_ALLOW_MISSING=true)" 1>&2; fi; done),$(addprefix $(KERNEL_OUT)/,$(RECOVERY_KERNEL_MODULES)))"; \
-		($(call build-image-kernel-modules-lineage,$$recovery_modules,$(KERNEL_RECOVERY_MODULES_OUT),,$(KERNEL_RECOVERY_DEPMOD_STAGING_DIR),$(BOARD_RECOVERY_KERNEL_MODULES_LOAD),,,)) || exit "$$?"; \
+		($(call build-image-kernel-modules-lineage,$$recovery_modules,$(KERNEL_RECOVERY_MODULES_OUT),,$(KERNEL_RECOVERY_DEPMOD_STAGING_DIR),$(BOARD_RECOVERY_KERNEL_MODULES_LOAD),,,,$(abspath $(KERNEL_OUT)))) || exit "$$?"; \
 	)
 	$(if $(filter $(TARGET_KERNEL_MIXED_MODE),true),\
 		system_dlkm_modules=$$(awk -F'/' '{ print "$(KERNEL_OUT)/"$$NF }' $(KERNEL_OUT)/system_dlkm.modules.load); \
